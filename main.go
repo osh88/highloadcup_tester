@@ -62,6 +62,7 @@ type (
 		bulletIdx int
 		status    int
 		body      []byte
+		time      time.Duration
 	}
 )
 
@@ -78,6 +79,7 @@ var (
 		allowNulls    bool
 		utf8          bool
 		bodyDiff      bool
+		requestTime   time.Duration
 	}
 
 	bullets []*Bullet
@@ -97,6 +99,8 @@ func init() {
 	flag.BoolVar(&argv.allowNulls, `allow-nulls`, false, `allow null in response data`)
 	flag.BoolVar(&argv.utf8, `utf8`, false, `show request & response bodies in UTF-8 human-readable format`)
 	flag.BoolVar(&argv.bodyDiff, `diff`, false, `show colorful body diffs instead both variants (red - wrong, green - need)`)
+	// grep'ом можно собрать статистику самых медленных запросов
+	flag.DurationVar(&argv.requestTime, `rtime`, 0, `show requests duration grater than`)
 	flag.Parse()
 }
 
@@ -364,6 +368,7 @@ func benchServer() {
 
 					myQueries++
 
+					t := time.Now()
 					err := client.DoTimeout(req, resp, 2*time.Second)
 					if err != nil {
 						oneBenchResult.status = -1
@@ -371,6 +376,7 @@ func benchServer() {
 					} else {
 						oneBenchResult.status = resp.StatusCode()
 						oneBenchResult.body = append(oneBenchResult.body, resp.Body()...)
+						oneBenchResult.time = time.Since(t)
 					}
 					benchResultsAll[i] = append(benchResultsAll[i], oneBenchResult)
 
@@ -414,6 +420,9 @@ func benchServer() {
 			for _, benchResult := range benchResultsAll[i] {
 				bullet := bullets[benchResult.bulletIdx]
 
+				if benchResult.time >= argv.requestTime {
+					fmt.Printf("REQUEST TIME: %s %s\n", benchResult.time, bullet.Request.URI)
+				}
 				if benchResult.status != bullet.Response.Status {
 					if !hideFailed {
 						bodyReq, bodyRespGot, bodyRespExpect := getReqRespBodies(bullet, &benchResult)
